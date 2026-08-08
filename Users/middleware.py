@@ -18,12 +18,15 @@ class PlanAccessMiddleware:
 
         if request.method == 'POST' and request.path == getattr(settings, 'LOGIN_URL', '/api/login/'):
             user = self._resolve_login_user(request)
-            if user and user.role != Roles.ADMIN and self._plan_invalid(user):
-                return self._forbidden(user)
+            if user and user.role != Roles.ADMIN:
+                user_plan = UserPlan.active_for(user)
+                if self._plan_expired(user_plan):
+                    return self._forbidden(user_plan)
 
         if request.user.is_authenticated and request.user.role != Roles.ADMIN:
-            if self._plan_invalid(request.user):
-                return self._forbidden(request.user)
+            user_plan = UserPlan.active_for(request.user)
+            if self._plan_expired(user_plan):
+                return self._forbidden(user_plan)
 
         return self.get_response(request)
 
@@ -43,14 +46,12 @@ class PlanAccessMiddleware:
             return None
         return get_user_model().objects.filter(username=username).first()
 
-    def _plan_invalid(self, user):
-        user_plan = UserPlan.active_for(user)
+    def _plan_expired(self, user_plan):
         if user_plan is None:
             return True
         return user_plan.end_date < timezone.now().date()
 
-    def _forbidden(self, user):
-        user_plan = UserPlan.active_for(user)
+    def _forbidden(self, user_plan):
         if user_plan is None:
             return JsonResponse({'detail': 'No active plan.'}, status=403)
         return JsonResponse(

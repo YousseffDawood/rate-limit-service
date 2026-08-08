@@ -22,6 +22,7 @@ class HasValidPlan(BasePermission):
         if user_plan.end_date < timezone.now().date():
             self.message = f'Your plan expired on {user_plan.end_date}. Please renew to regain access.'
             return False
+        self._user_plan = user_plan  # cache for subclasses — avoids a second DB query
         return True
 
 
@@ -31,7 +32,7 @@ class HasAIAccess(HasValidPlan):
     def has_permission(self, request, view):
         if not super().has_permission(request, view):
             return False
-        return UserPlan.active_for(request.user).plan.ai_access
+        return self._user_plan.plan.ai_access
 
 
 class HasTokenBudget(HasValidPlan):
@@ -40,5 +41,8 @@ class HasTokenBudget(HasValidPlan):
     def has_permission(self, request, view):
         if not super().has_permission(request, view):
             return False
-        user_plan = UserPlan.active_for(request.user)
+        user_plan = self._user_plan
+        # token_limit == 0 means this plan has no token feature at all
+        if user_plan.plan.token_limit == 0:
+            return False
         return user_plan.tokens_used < user_plan.plan.token_limit

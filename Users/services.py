@@ -20,7 +20,8 @@ def consume_tokens(user, amount=1):
         user_plan = UserPlan.objects.select_for_update().filter(user=user, is_active=True).first()
         if user_plan is None:
             raise NoActivePlan
-        if user_plan.tokens_used + amount > user_plan.plan.token_limit:
+        # token_limit == 0 means this plan has no token feature (e.g. Basic plan)
+        if user_plan.plan.token_limit == 0 or user_plan.tokens_used + amount > user_plan.plan.token_limit:
             raise TokenLimitExceeded
         user_plan.tokens_used += amount
         user_plan.save(update_fields=['tokens_used'])
