@@ -13,12 +13,10 @@ A Django REST Framework backend that enforces **subscription plan access control
   - [Middleware](#middleware)
   - [DRF Permissions](#drf-permissions)
   - [Service Layer](#service-layer)
-- [Project Setup](#project-setup)
-- [Running the Dev Server](#running-the-dev-server)
-- [Seeding Test Data](#seeding-test-data)
+- [Integration Guide](#integration-guide)
+- [Local Development](#local-development)
 - [Configuration](#configuration)
 - [Roles](#roles)
-- [Plans](#plans)
 
 ---
 
@@ -197,52 +195,114 @@ except ClientLimitExceeded:
 
 ---
 
-## Project Setup
+## Integration Guide
 
-**Requirements:** Python 3.10+, pip
+This is a **Django app module**, not a standalone project. It is designed to be copied into an existing Django project and wired up as described below.
+
+### 1. Copy the app
+
+Drop the `Users/` directory into your host project's root (alongside your other apps).
+
+### 2. Install dependencies
 
 ```bash
-# 1. Clone the repo
-git clone <repo-url>
-cd API_Limiter
-
-# 2. Create and activate a virtual environment
-python -m venv env
-# Windows:
-env\Scripts\activate
-# macOS/Linux:
-source env/bin/activate
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Apply migrations
-python manage.py migrate
-
-# 5. (Optional) Seed test data
-python manage.py seed_data
+pip install djangorestframework
 ```
+
+Add any other packages from [`requirements.txt`](requirements.txt) that your host project doesn't already have.
+
+### 3. Register the app
+
+```python
+# settings.py
+INSTALLED_APPS = [
+    ...
+    'Users',
+    'rest_framework',
+    'rest_framework.authtoken',
+]
+```
+
+### 4. Add the middleware
+
+Place `PlanAccessMiddleware` **after** `AuthenticationMiddleware` so `request.user` is already resolved:
+
+```python
+# settings.py
+MIDDLEWARE = [
+    ...
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'Users.middleware.PlanAccessMiddleware',   # ← here
+    ...
+]
+```
+
+### 5. Set the custom user model
+
+```python
+# settings.py
+AUTH_USER_MODEL = 'Users.User'
+```
+
+> **Important:** This must be set **before** the first `migrate`. If the host project already has a custom user model, merge the `role` and `owner` fields into it instead.
+
+### 6. Configure the login URL
+
+```python
+# settings.py
+LOGIN_URL = '/your/login/endpoint/'   # must match your actual login route
+```
+
+### 7. Wire up URLs
+
+```python
+# host project urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    ...
+    path('api/', include('Users.urls')),
+]
+```
+
+### 8. Run migrations
+
+```bash
+python manage.py migrate
+```
+
+The host project's configured database (Postgres, MySQL, etc.) is used — SQLite is only present for local development.
 
 ---
 
-## Running the Dev Server
+## Local Development
+
+> These steps are for **testing this module in isolation** and are not part of the production integration flow.
 
 ```bash
+# 1. Create and activate a virtual environment
+python -m venv env
+env\Scripts\activate      # Windows
+source env/bin/activate   # macOS/Linux
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Apply migrations (uses SQLite locally)
+python manage.py migrate
+
+# 4. Seed test users, plans, and clients
+python manage.py seed_data
+
+# 5. Start the dev server
 python manage.py runserver
 ```
 
-API is available at `http://127.0.0.1:8000/api/`.  
-Admin panel is at `http://127.0.0.1:8000/admin/`.
+API available at `http://127.0.0.1:8000/api/`  
+Admin panel at `http://127.0.0.1:8000/admin/`
 
----
 
-## Seeding Test Data
-
-```bash
-python manage.py seed_data
-```
-
-Creates the following out of the box:
+Creates the following test accounts out of the box:
 
 | Username  | Role  | Plan    | Status           | Notes                        |
 |-----------|-------|---------|------------------|------------------------------|
